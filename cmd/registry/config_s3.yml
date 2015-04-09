@@ -1,0 +1,36 @@
+version: 0.1
+log:
+  level: debug
+  fields:
+    service: registry
+    environment: development
+storage:
+  s3:
+    region: REGISTRY_S3_STORAGE_REGION
+    bucket: REGISTRY_S3_STORAGE_BUCKET
+    rootpath: /
+    encrypt: false
+    secure: false
+    accesskey: REGISTRY_S3_STORAGE_ACCESSKEY
+    secretkey: REGISTRY_S3_STORAGE_SECRETKEY
+http:
+    addr: :5000
+    secret: asecretforlocaldevelopment
+    debug:
+        addr: localhost:5001
+notifications:
+    endpoints:
+        - name: local-8082
+          url: http://localhost:5003/callback
+          headers:
+             Authorization: [Bearer <an example token>]
+          timeout: 1s
+          threshold: 10
+          backoff: 1s
+          disabled: true
+        - name: local-8083
+          url: http://localhost:8083/callback
+          timeout: 1s
+          threshold: 10
+          backoff: 1s
+          disabled: true

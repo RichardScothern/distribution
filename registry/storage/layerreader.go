@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"fmt"
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/digest"
 	"github.com/docker/distribution/registry/storage/driver"
@@ -55,6 +56,10 @@ func (lr *layerReader) Handler(r *http.Request) (h http.Handler, err error) {
 	var handlerFunc http.HandlerFunc
 
 	redirectURL, err := lr.fileReader.driver.URLFor(lr.path, map[string]interface{}{"method": r.Method})
+
+	expires := time.Now().Add(time.Duration(1 * time.Hour))
+	redirectURL, err = fastlyURL(redirectURL, expires)
+	fmt.Printf("Handler=%q", redirectURL)
 
 	switch err {
 	case nil:
