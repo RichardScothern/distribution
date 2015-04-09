@@ -10,18 +10,22 @@ sub vcl_recv {
    set req.http.X-Sig = regsub(req.http.X-Token, "^[^_]+_(.*)", "\1");
    set req.http.X-Exp = regsub(req.http.X-Token, "^([^_]+)_.*", "\1");
 
-   if (time.is_after(now, time.hex_to_time(1,req.http.X-Exp))) {
+#   if (time.is_after(now, time.hex_to_time(1,req.http.X-Exp))) {
+#      error 403;
+#   }
+
+   if (req.http.X-Sig != digest.hmac_sha1("FASTLY-KEY", req.http.X-Filename req.http.X-Exp)) {
       error 403;
    }
-
-   if (req.http.X-Sig != digest.hmac_sha1("FASTLY-TOKEN", req.http.X-Filename req.http.X-Exp)) {
-      error 403;
-   }
-
-   # Strip the token to prevent it making keys all unique
-   set req.url = regsub(req.url, "\?.*", "");
 
    return(lookup);
+}
+
+sub vcl_hash {
+#FASTLY hash
+
+    set req.hash  += regsub(req.url, "\?.*", "");
+    return (hash);
 }
 
 sub vcl_fetch {
@@ -93,10 +97,10 @@ sub vcl_error {
         <title>"} obj.status " " obj.response {"</title>
         </head>
         <body>
-        <h1>Error "} req.http.X-Filename  " " now " " time.hex_to_time(1, req.http.X-Exp)  {"</h1>
+        <h1>Error "} req.url  {"</h1>
         <p>"} obj.response {"</p>
         <h3>Guru Meditation:</h3>
-        <p>XID: "} req.xid {"</p>
+        <p> hash : "}    {"</p>
         <address><a href="http://www.varnish-cache.org/">Varnish</a></address>
         </body>
         </html>
