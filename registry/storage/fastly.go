@@ -13,7 +13,7 @@ import (
 )
 
 // TODO: from config
-const fastlyHost = "cdn.docker.com.global.prod.fastly.net"
+const fastlyHost = "cdn.prod.docker.com.global.prod.fastly.net"
 
 // fastlyURL converts an S3 URL into a fastly URL
 // with a TTL token valud until expires

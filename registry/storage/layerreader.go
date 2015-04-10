@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"time"
 
-	"fmt"
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/digest"
 	"github.com/docker/distribution/registry/storage/driver"
@@ -55,21 +54,22 @@ func (lr *layerReader) Close() error {
 func (lr *layerReader) Handler(r *http.Request) (h http.Handler, err error) {
 	var handlerFunc http.HandlerFunc
 
-	redirectURL, err := lr.fileReader.driver.URLFor(lr.path, map[string]interface{}{"method": r.Method})
+	oldURL, err := lr.fileReader.driver.URLFor(lr.path, map[string]interface{}{"method": r.Method})
 
 	expires := time.Now().Add(time.Duration(1 * time.Hour))
-	redirectURL, err = fastlyURL(redirectURL, expires)
-	fmt.Printf("Handler=%q", redirectURL)
+	redirectURL, err := fastlyURL(oldURL, expires)
 
 	switch err {
 	case nil:
 		handlerFunc = func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Orig-Url", oldURL)
 			// Redirect to storage URL.
 			http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 		}
 	case driver.ErrUnsupportedMethod:
 		handlerFunc = func(w http.ResponseWriter, r *http.Request) {
 			// Fallback to serving the content directly.
+			w.Header().Set("X-Orig-Url", oldURL)
 			http.ServeContent(w, r, lr.digest.String(), lr.CreatedAt(), lr)
 		}
 	default:
@@ -78,6 +78,7 @@ func (lr *layerReader) Handler(r *http.Request) (h http.Handler, err error) {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Orig-Url", oldURL)
 		w.Header().Set("Docker-Content-Digest", lr.digest.String())
 		handlerFunc.ServeHTTP(w, r)
 	}), nil
