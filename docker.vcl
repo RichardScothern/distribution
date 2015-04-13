@@ -63,6 +63,9 @@ sub vcl_fetch {
     set beresp.ttl = 3600s;
   }
 
+  # https://docs.fastly.com/guides/caching/what-support-does-fastly-have-for-large-files
+  set beresp.do_stream = true;
+  
   return(deliver);
 }
 
