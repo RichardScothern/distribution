@@ -59,6 +59,7 @@ func (base *Base) GetContent(ctx context.Context, path string) ([]byte, error) {
 		return nil, storagedriver.InvalidPathError{Path: path}
 	}
 
+	context.IncrementMetric(ctx, "io.getcontent")
 	return base.StorageDriver.GetContent(ctx, path)
 }
 
@@ -71,6 +72,7 @@ func (base *Base) PutContent(ctx context.Context, path string, content []byte) e
 		return storagedriver.InvalidPathError{Path: path}
 	}
 
+	context.IncrementMetric(ctx, "io.putcontent")
 	return base.StorageDriver.PutContent(ctx, path, content)
 }
 
@@ -87,6 +89,7 @@ func (base *Base) ReadStream(ctx context.Context, path string, offset int64) (io
 		return nil, storagedriver.InvalidPathError{Path: path}
 	}
 
+	context.IncrementMetric(ctx, "io.readstream")
 	return base.StorageDriver.ReadStream(ctx, path, offset)
 }
 
@@ -103,6 +106,7 @@ func (base *Base) WriteStream(ctx context.Context, path string, offset int64, re
 		return 0, storagedriver.InvalidPathError{Path: path}
 	}
 
+	context.IncrementMetric(ctx, "io.writestream")
 	return base.StorageDriver.WriteStream(ctx, path, offset, reader)
 }
 
@@ -115,6 +119,7 @@ func (base *Base) Stat(ctx context.Context, path string) (storagedriver.FileInfo
 		return nil, storagedriver.InvalidPathError{Path: path}
 	}
 
+	context.IncrementMetric(ctx, "io.stat")
 	return base.StorageDriver.Stat(ctx, path)
 }
 
@@ -127,6 +132,7 @@ func (base *Base) List(ctx context.Context, path string) ([]string, error) {
 		return nil, storagedriver.InvalidPathError{Path: path}
 	}
 
+	context.IncrementMetric(ctx, "io.list")
 	return base.StorageDriver.List(ctx, path)
 }
 
@@ -141,6 +147,7 @@ func (base *Base) Move(ctx context.Context, sourcePath string, destPath string) 
 		return storagedriver.InvalidPathError{Path: destPath}
 	}
 
+	context.IncrementMetric(ctx, "io.move")
 	return base.StorageDriver.Move(ctx, sourcePath, destPath)
 }
 
@@ -153,6 +160,7 @@ func (base *Base) Delete(ctx context.Context, path string) error {
 		return storagedriver.InvalidPathError{Path: path}
 	}
 
+	context.IncrementMetric(ctx, "io.delete")
 	return base.StorageDriver.Delete(ctx, path)
 }
 
@@ -165,5 +173,6 @@ func (base *Base) URLFor(ctx context.Context, path string, options map[string]in
 		return "", storagedriver.InvalidPathError{Path: path}
 	}
 
+	context.IncrementMetric(ctx, "io.urlfor")
 	return base.StorageDriver.URLFor(ctx, path, options)
 }

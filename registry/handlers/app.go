@@ -63,6 +63,7 @@ func NewApp(ctx context.Context, configuration configuration.Configuration) *App
 	}
 
 	app.Context = ctxu.WithLogger(app.Context, ctxu.GetLogger(app, "instance.id"))
+	app.Context = ctxu.WithValue(app.Context, "metrics", ctxu.NewMetrics())
 
 	// Register the handler dispatchers.
 	app.register(v2.RouteNameBase, func(ctx *Context, r *http.Request) http.Handler {
@@ -320,6 +321,15 @@ func (app *App) configureLogHook(configuration *configuration.Configuration) {
 	app.Context = ctxu.WithLogger(app.Context, logger)
 }
 
+func logMetrics(ctx context.Context) {
+	c := ctx
+	for k, v := range ctxu.GetMetrics(ctx) {
+		c = ctxu.WithValue(c, k, v)
+		c = ctxu.WithLogger(c, ctxu.GetLogger(c, k))
+	}
+	ctxu.GetLogger(c).Infof("metrics")
+}
+
 func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close() // ensure that request body is always closed.
 
@@ -327,7 +337,9 @@ func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// returned by the request router.
 	ctx := defaultContextManager.context(app, w, r)
 	defer func() {
+		logMetrics(ctx)
 		ctxu.GetResponseLogger(ctx).Infof("response completed")
+
 	}()
 	defer defaultContextManager.release(ctx)
 
