@@ -36,6 +36,7 @@ import (
 	"github.com/docker/libtrust"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
+	"github.com/opentracing/opentracing-go"
 	"golang.org/x/net/context"
 )
 
@@ -96,6 +97,10 @@ func NewApp(ctx context.Context, config *configuration.Configuration) *App {
 
 	// Register the handler dispatchers.
 	app.register(v2.RouteNameBase, func(ctx *Context, r *http.Request) http.Handler {
+		sp := opentracing.StartSpan(v2.RouteNameBase)
+		defer sp.Finish()
+		sp.LogEvent("/v2/ ping called")
+
 		return http.HandlerFunc(apiBase)
 	})
 	app.register(v2.RouteNameManifest, imageManifestDispatcher)
@@ -608,10 +613,16 @@ func (app *App) dispatcher(dispatch dispatchFunc) http.Handler {
 			return
 		}
 
-		// Add username to request logging
+		// Add username to request loggingxf
 		context.Context = ctxu.WithLogger(context.Context, ctxu.GetLogger(context.Context, auth.UserNameKey))
 
+		fmt.Println("ONCE     \n\n")
+		var sp opentracing.Span
+		spanName := fmt.Sprintf("%s %s", r.Method, mux.CurrentRoute(r).GetName())
+		context.Context, sp = opentracing.ContextWithSpan(context.Context, opentracing.StartSpan(spanName))
+		defer sp.Finish()
 		if app.nameRequired(r) {
+
 			nameRef, err := reference.ParseNamed(getName(context))
 			if err != nil {
 				ctxu.GetLogger(context).Errorf("error parsing reference from context: %v", err)
@@ -625,7 +636,6 @@ func (app *App) dispatcher(dispatch dispatchFunc) http.Handler {
 				return
 			}
 			repository, err := app.registry.Repository(context, nameRef)
-
 			if err != nil {
 				ctxu.GetLogger(context).Errorf("error resolving repository: %v", err)
 
@@ -641,6 +651,7 @@ func (app *App) dispatcher(dispatch dispatchFunc) http.Handler {
 				}
 				return
 			}
+			sp.SetBaggageItem("Repository", repository.Named().Name())
 
 			// assign and decorate the authorized repository with an event bridge.
 			context.Repository = notifications.Listen(

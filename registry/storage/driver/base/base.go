@@ -40,8 +40,10 @@ package base
 import (
 	"io"
 
+	"fmt"
 	"github.com/docker/distribution/context"
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
+	"github.com/opentracing/opentracing-go"
 )
 
 // Base provides a wrapper around a storagedriver implementation that provides
@@ -79,12 +81,14 @@ func (base *Base) setDriverName(e error) error {
 
 // GetContent wraps GetContent of underlying storage driver.
 func (base *Base) GetContent(ctx context.Context, path string) ([]byte, error) {
-	ctx, done := context.WithTrace(ctx)
-	defer done("%s.GetContent(%q)", base.Name(), path)
+	name := fmt.Sprintf("%s.GetContent(%q)", base.Name(), path)
 
 	if !storagedriver.PathRegexp.MatchString(path) {
 		return nil, storagedriver.InvalidPathError{Path: path, DriverName: base.StorageDriver.Name()}
 	}
+
+	sp := opentracing.StartChildSpan(opentracing.SpanFromContext(ctx), name)
+	defer sp.Finish()
 
 	b, e := base.StorageDriver.GetContent(ctx, path)
 	return b, base.setDriverName(e)

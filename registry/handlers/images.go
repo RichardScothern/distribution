@@ -15,6 +15,7 @@ import (
 	"github.com/docker/distribution/registry/api/errcode"
 	"github.com/docker/distribution/registry/api/v2"
 	"github.com/gorilla/handlers"
+	"github.com/opentracing/opentracing-go"
 )
 
 // These constants determine which architecture and OS to choose from a
@@ -64,6 +65,16 @@ type imageManifestHandler struct {
 // GetImageManifest fetches the image manifest from the storage backend, if it exists.
 func (imh *imageManifestHandler) GetImageManifest(w http.ResponseWriter, r *http.Request) {
 	ctxu.GetLogger(imh).Debug("GetImageManifest")
+	// try from header
+	var sp opentracing.Span
+	sp, err := opentracing.JoinFromHeader("GetImageManifest", r.Header, opentracing.GlobalTracer())
+	if err != nil {
+		ctxu.GetLogger(imh).Info(err)
+		sp = opentracing.SpanFromContext(imh)
+	}
+
+	defer sp.Finish()
+
 	manifests, err := imh.Repository.Manifests(imh)
 	if err != nil {
 		imh.Errors = append(imh.Errors, err)
@@ -81,6 +92,7 @@ func (imh *imageManifestHandler) GetImageManifest(w http.ResponseWriter, r *http
 		imh.Digest = desc.Digest
 	}
 
+	sp.LogEvent("tag lookup")
 	if etagMatch(r, imh.Digest.String()) {
 		w.WriteHeader(http.StatusNotModified)
 		return
@@ -91,7 +103,7 @@ func (imh *imageManifestHandler) GetImageManifest(w http.ResponseWriter, r *http
 		imh.Errors = append(imh.Errors, v2.ErrorCodeManifestUnknown.WithDetail(err))
 		return
 	}
-
+	sp.LogEvent("manifest loaded")
 	supportsSchema2 := false
 	supportsManifestList := false
 	if acceptHeaders, ok := r.Header["Accept"]; ok {
@@ -114,7 +126,7 @@ func (imh *imageManifestHandler) GetImageManifest(w http.ResponseWriter, r *http
 	if imh.Tag != "" && isSchema2 && !supportsSchema2 {
 		// Rewrite manifest in schema1 format
 		ctxu.GetLogger(imh).Infof("rewriting manifest %s in schema1 format to support old client", imh.Digest.String())
-
+		sp.LogEvent("rewriting manifest in schema1 to support old client")
 		manifest, err = imh.convertSchema2Manifest(schema2Manifest)
 		if err != nil {
 			return
@@ -122,7 +134,7 @@ func (imh *imageManifestHandler) GetImageManifest(w http.ResponseWriter, r *http
 	} else if imh.Tag != "" && isManifestList && !supportsManifestList {
 		// Rewrite manifest in schema1 format
 		ctxu.GetLogger(imh).Infof("rewriting manifest list %s in schema1 format to support old client", imh.Digest.String())
-
+		sp.LogEvent("rewriting manifest list in schema 1 to support old client")
 		// Find the image manifest corresponding to the default
 		// platform
 		var manifestDigest digest.Digest

@@ -7,6 +7,7 @@ import (
 	"github.com/docker/distribution/context"
 	"github.com/docker/distribution/digest"
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
+	"github.com/opentracing/opentracing-go"
 )
 
 var _ distribution.TagService = &tagStore{}
@@ -94,6 +95,9 @@ func (ts *tagStore) Tag(ctx context.Context, tag string, desc distribution.Descr
 
 // resolve the current revision for name and tag.
 func (ts *tagStore) Get(ctx context.Context, tag string) (distribution.Descriptor, error) {
+	sp := opentracing.SpanFromContext(ctx)
+	defer sp.Finish()
+
 	currentPath, err := pathFor(manifestTagCurrentPathSpec{
 		name: ts.repository.Named().Name(),
 		tag:  tag,

@@ -17,8 +17,13 @@ import (
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	_ "github.com/docker/distribution/registry/storage/driver/s3-goamz"
 	_ "github.com/docker/distribution/registry/storage/driver/swift"
+	"github.com/opentracing/basictracer-go"
+	"github.com/opentracing/basictracer-go/examples/dapperish"
+	"github.com/opentracing/opentracing-go"
 )
 
 func main() {
+	tracerImpl := basictracer.New(dapperish.NewTrivialRecorder("registry")) // do a better name
+	opentracing.InitGlobalTracer(tracerImpl)
 	registry.RootCmd.Execute()
 }
