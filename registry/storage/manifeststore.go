@@ -40,7 +40,7 @@ func (o skipLayerOption) Apply(m distribution.ManifestService) error {
 
 type manifestStore struct {
 	repository distribution.Repository
-	blobStore  *linkedBlobStore
+	blobStore  distribution.BlobStore
 	ctx        context.Context
 
 	skipDependencyVerification bool

@@ -220,3 +220,7 @@ func (pbs *proxyBlobStore) Open(ctx context.Context, dgst digest.Digest) (distri
 func (pbs *proxyBlobStore) Delete(ctx context.Context, dgst digest.Digest) error {
 	return distribution.ErrUnsupported
 }
+
+func (pbs *proxyBlobStore) Enumerate(ctx context.Context, f func(dgst digest.Digest) error) error {
+	return distribution.ErrUnsupported
+}

@@ -92,6 +92,14 @@ func (sbs statsBlobStore) Delete(ctx context.Context, dgst digest.Digest) error 
 	return sbs.blobs.Delete(ctx, dgst)
 }
 
+func (sbs statsBlobStore) Enumerate(ctx context.Context, ingestor func(digest.Digest) error) error {
+	sbsMu.Lock()
+	sbs.stats["enumerate"]++
+	sbsMu.Unlock()
+
+	return sbs.blobs.Enumerate(ctx, ingestor)
+}
+
 type testEnv struct {
 	numUnique int
 	inRemote  []distribution.Descriptor

@@ -251,4 +251,5 @@ type BlobStore interface {
 	BlobService
 	BlobServer
 	BlobDeleter
+	BlobEnumerator
 }

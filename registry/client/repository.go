@@ -621,7 +621,6 @@ func sanitizeLocation(location, base string) (string, error) {
 
 func (bs *blobs) Stat(ctx context.Context, dgst digest.Digest) (distribution.Descriptor, error) {
 	return bs.statter.Stat(ctx, dgst)
-
 }
 
 func (bs *blobs) Get(ctx context.Context, dgst digest.Digest) ([]byte, error) {
@@ -654,6 +653,10 @@ func (bs *blobs) Open(ctx context.Context, dgst digest.Digest) (distribution.Rea
 }
 
 func (bs *blobs) ServeBlob(ctx context.Context, w http.ResponseWriter, r *http.Request, dgst digest.Digest) error {
+	panic("not implemented")
+}
+
+func (bs *blobs) Enumerate(ctx context.Context, ingester func(dgst digest.Digest) error) error {
 	panic("not implemented")
 }
 

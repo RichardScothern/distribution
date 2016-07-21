@@ -107,7 +107,7 @@ func (repo *metadataRepository) Manifests(ctx context.Context, options ...distri
 	store := &manifestStore{
 		ctx:        ctx,
 		repository: repo,
-		blobStore:  nil, // unused
+		blobStore:  blobStore,
 		schema1Handler: &signedManifestHandler{
 			ctx:               ctx,
 			schema1SigningKey: repo.reg.embedded.schema1SigningKey,
