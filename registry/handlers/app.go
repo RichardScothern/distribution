@@ -32,6 +32,8 @@ import (
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
 	"github.com/docker/distribution/registry/storage/driver/factory"
 	storagemiddleware "github.com/docker/distribution/registry/storage/driver/middleware"
+	"github.com/docker/distribution/registry/storage/metadata"
+	"github.com/docker/distribution/registry/storage/metadata/inmemory"
 	"github.com/docker/distribution/version"
 	"github.com/docker/libtrust"
 	"github.com/garyburd/redigo/redis"
@@ -169,7 +171,6 @@ func NewApp(ctx context.Context, config *configuration.Configuration) *App {
 			panic(err)
 		}
 	}
-
 	options = append(options, storage.Schema1SigningKey(app.trustKey))
 
 	if config.HTTP.Host != "" {
@@ -211,37 +212,52 @@ func NewApp(ctx context.Context, config *configuration.Configuration) *App {
 		options = append(options, storage.EnableRedirect)
 	}
 
-	// configure storage caches
-	if cc, ok := config.Storage["cache"]; ok {
-		v, ok := cc["blobdescriptor"]
-		if !ok {
-			// Backwards compatible: "layerinfo" == "blobdescriptor"
-			v = cc["layerinfo"]
-		}
-
-		switch v {
-		case "redis":
-			if app.redis == nil {
-				panic("redis configuration required to use for layerinfo cache")
-			}
-			cacheProvider := rediscache.NewRedisBlobDescriptorCacheProvider(app.redis)
-			localOptions := append(options, storage.BlobDescriptorCacheProvider(cacheProvider))
-			app.registry, err = storage.NewRegistry(app, app.driver, localOptions...)
-			if err != nil {
-				panic("could not create registry: " + err.Error())
-			}
-			ctxu.GetLogger(app).Infof("using redis blob descriptor cache")
+	if config.Metadata.Enabled {
+		var metadataService metadata.MetadataService
+		switch config.Metadata.Type {
 		case "inmemory":
-			cacheProvider := memorycache.NewInMemoryBlobDescriptorCacheProvider()
-			localOptions := append(options, storage.BlobDescriptorCacheProvider(cacheProvider))
-			app.registry, err = storage.NewRegistry(app, app.driver, localOptions...)
-			if err != nil {
-				panic("could not create registry: " + err.Error())
-			}
-			ctxu.GetLogger(app).Infof("using inmemory blob descriptor cache")
+			metadataService = inmemory.NewMetadataService()
 		default:
-			if v != "" {
-				ctxu.GetLogger(app).Warnf("unknown cache type %q, caching disabled", config.Storage["cache"])
+			panic("metadata store type must be 'inmemory'")
+		}
+		app.registry, err = storage.NewMetadataRegistry(app.Context, app.driver, metadataService, options...)
+		if err != nil {
+			panic("could not create registry: " + err.Error())
+		}
+		ctxu.GetLogger(app).Infof("using a %T metadata store:", metadataService)
+	} else {
+		// configure storage caches
+		if cc, ok := config.Storage["cache"]; ok {
+			v, ok := cc["blobdescriptor"]
+			if !ok {
+				// Backwards compatible: "layerinfo" == "blobdescriptor"
+				v = cc["layerinfo"]
+			}
+
+			switch v {
+			case "redis":
+				if app.redis == nil {
+					panic("redis configuration required to use for layerinfo cache")
+				}
+				cacheProvider := rediscache.NewRedisBlobDescriptorCacheProvider(app.redis)
+				localOptions := append(options, storage.BlobDescriptorCacheProvider(cacheProvider))
+				app.registry, err = storage.NewRegistry(app, app.driver, localOptions...)
+				if err != nil {
+					panic("could not create registry: " + err.Error())
+				}
+				ctxu.GetLogger(app).Infof("using redis blob descriptor cache")
+			case "inmemory":
+				cacheProvider := memorycache.NewInMemoryBlobDescriptorCacheProvider()
+				localOptions := append(options, storage.BlobDescriptorCacheProvider(cacheProvider))
+				app.registry, err = storage.NewRegistry(app, app.driver, localOptions...)
+				if err != nil {
+					panic("could not create registry: " + err.Error())
+				}
+				ctxu.GetLogger(app).Infof("using inmemory blob descriptor cache")
+			default:
+				if v != "" {
+					ctxu.GetLogger(app).Warnf("unknown cache type %q, caching disabled", config.Storage["cache"])
+				}
 			}
 		}
 	}
@@ -249,6 +265,7 @@ func NewApp(ctx context.Context, config *configuration.Configuration) *App {
 	if app.registry == nil {
 		// configure the registry if no cache section is available.
 		app.registry, err = storage.NewRegistry(app.Context, app.driver, options...)
+
 		if err != nil {
 			panic("could not create registry: " + err.Error())
 		}

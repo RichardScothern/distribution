@@ -172,6 +172,11 @@ type Configuration struct {
 			TrustKey string `yaml:"signingkeyfile,omitempty"`
 		} `yaml:"schema1,omitempty"`
 	} `yaml:"compatibility,omitempty"`
+
+	Metadata struct {
+		Enabled bool   `yaml:"enabled,omitempty"`
+		Type    string `yaml:"type,omitempty"`
+	}
 }
 
 // LogHook is composed of hook Level and Type.
