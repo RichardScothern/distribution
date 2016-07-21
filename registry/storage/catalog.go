@@ -6,8 +6,10 @@ import (
 	"path"
 	"strings"
 
+	"github.com/docker/distribution"
 	"github.com/docker/distribution/context"
 	"github.com/docker/distribution/registry/storage/driver"
+	"github.com/docker/distribution/registry/storage/metadata"
 )
 
 // ErrFinishedWalk is used when the called walk function no longer wants
@@ -67,6 +69,10 @@ func (reg *registry) Repositories(ctx context.Context, repos []string, last stri
 
 // Enumerate applies ingester to each repository
 func (reg *registry) Enumerate(ctx context.Context, ingester func(string) error) error {
+	return foreachRepository(ctx, reg, ingester)
+}
+
+func foreachRepository(ctx context.Context, reg distribution.Namespace, ingester func(repo string) error) error {
 	repoNameBuffer := make([]string, 100)
 	var last string
 	for {
@@ -93,5 +99,38 @@ func (reg *registry) Enumerate(ctx context.Context, ingester func(string) error)
 		}
 	}
 	return nil
+}
 
+// todo(richardscothern): find a better place for this
+func (reg *metadataRegistry) Repositories(ctx context.Context, repos []string, lastRepo string) (n int, errVal error) {
+	if len(repos) == 0 {
+		return 0, errors.New("no space in slice")
+	}
+
+	var items []string
+
+	params := metadata.IterateParameters{From: lastRepo, IterType: metadata.RepoKey{}}
+	err := reg.metadataService.Iterate(ctx, params, func(key string, val interface{}) error {
+		items = append(items, key)
+		if len(items) >= len(repos) {
+			// filled the give slice
+			return ErrFinishedWalk
+		}
+		return nil
+	})
+
+	if err != nil && err != ErrFinishedWalk {
+		return 0, err
+	}
+
+	n = copy(repos, items)
+	if len(items) < len(repos) {
+		// didn't fill the repos array, no more to return
+		errVal = io.EOF
+	}
+	return n, errVal
+}
+
+func (reg *metadataRegistry) Enumerate(ctx context.Context, ingester func(repo string) error) error {
+	return foreachRepository(ctx, reg, ingester)
 }

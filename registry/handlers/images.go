@@ -15,6 +15,7 @@ import (
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/api/errcode"
 	"github.com/docker/distribution/registry/api/v2"
+	"github.com/docker/distribution/registry/storage/metadata"
 	"github.com/gorilla/handlers"
 )
 
@@ -269,54 +270,26 @@ func (imh *imageManifestHandler) PutImageManifest(w http.ResponseWriter, r *http
 	if imh.Tag != "" {
 		options = append(options, distribution.WithTag(imh.Tag))
 	}
-	_, err = manifests.Put(imh, manifest, options...)
-	if err != nil {
-		// TODO(stevvooe): These error handling switches really need to be
-		// handled by an app global mapper.
-		if err == distribution.ErrUnsupported {
-			imh.Errors = append(imh.Errors, errcode.ErrorCodeUnsupported)
-			return
+
+	err = metadata.Update(imh.Context, imh.Repository, func(ctx ctxu.Context) error {
+		if _, err := manifests.Put(ctx, manifest); err != nil {
+			imh.handlePutError(err)
+			return err
 		}
-		if err == distribution.ErrAccessDenied {
-			imh.Errors = append(imh.Errors, errcode.ErrorCodeDenied)
-			return
-		}
-		switch err := err.(type) {
-		case distribution.ErrManifestVerification:
-			for _, verificationError := range err {
-				switch verificationError := verificationError.(type) {
-				case distribution.ErrManifestBlobUnknown:
-					imh.Errors = append(imh.Errors, v2.ErrorCodeManifestBlobUnknown.WithDetail(verificationError.Digest))
-				case distribution.ErrManifestNameInvalid:
-					imh.Errors = append(imh.Errors, v2.ErrorCodeNameInvalid.WithDetail(err))
-				case distribution.ErrManifestUnverified:
-					imh.Errors = append(imh.Errors, v2.ErrorCodeManifestUnverified)
-				default:
-					if verificationError == digest.ErrDigestInvalidFormat {
-						imh.Errors = append(imh.Errors, v2.ErrorCodeDigestInvalid)
-					} else {
-						imh.Errors = append(imh.Errors, errcode.ErrorCodeUnknown, verificationError)
-					}
-				}
+
+		if imh.Tag != "" {
+			tags := imh.Repository.Tags(imh)
+			if err := tags.Tag(ctx, imh.Tag, desc); err != nil {
+				imh.handlePutError(err)
+				return err
 			}
-		case errcode.Error:
-			imh.Errors = append(imh.Errors, err)
-		default:
-			imh.Errors = append(imh.Errors, errcode.ErrorCodeUnknown.WithDetail(err))
 		}
+		return nil
+	})
 
+	if err != nil {
+		// errors already populated
 		return
-	}
-
-	// Tag this manifest
-	if imh.Tag != "" {
-		tags := imh.Repository.Tags(imh)
-		err = tags.Tag(imh, imh.Tag, desc)
-		if err != nil {
-			imh.Errors = append(imh.Errors, errcode.ErrorCodeUnknown.WithDetail(err))
-			return
-		}
-
 	}
 
 	// Construct a canonical url for the uploaded manifest.
@@ -339,6 +312,43 @@ func (imh *imageManifestHandler) PutImageManifest(w http.ResponseWriter, r *http
 	w.WriteHeader(http.StatusCreated)
 }
 
+func (imh *imageManifestHandler) handlePutError(err error) {
+	// TODO(stevvooe): These error handling switches really need to be
+	// handled by an app global mapper.
+	if err == distribution.ErrUnsupported {
+		imh.Errors = append(imh.Errors, errcode.ErrorCodeUnsupported)
+		return
+	}
+	if err == distribution.ErrAccessDenied {
+		imh.Errors = append(imh.Errors, errcode.ErrorCodeDenied)
+		return
+	}
+	switch err := err.(type) {
+	case distribution.ErrManifestVerification:
+		for _, verificationError := range err {
+			switch verificationError := verificationError.(type) {
+			case distribution.ErrManifestBlobUnknown:
+				imh.Errors = append(imh.Errors, v2.ErrorCodeManifestBlobUnknown.WithDetail(verificationError.Digest))
+			case distribution.ErrManifestNameInvalid:
+				imh.Errors = append(imh.Errors, v2.ErrorCodeNameInvalid.WithDetail(err))
+			case distribution.ErrManifestUnverified:
+				imh.Errors = append(imh.Errors, v2.ErrorCodeManifestUnverified)
+			case errcode.Error:
+				imh.Errors = append(imh.Errors, err)
+			default:
+				if verificationError == digest.ErrDigestInvalidFormat {
+					imh.Errors = append(imh.Errors, v2.ErrorCodeDigestInvalid)
+				} else {
+					imh.Errors = append(imh.Errors, errcode.ErrorCodeUnknown, verificationError)
+				}
+			}
+		}
+
+	default:
+		imh.Errors = append(imh.Errors, errcode.ErrorCodeUnknown.WithDetail(err))
+	}
+}
+
 // DeleteImageManifest removes the manifest with the given digest from the registry.
 func (imh *imageManifestHandler) DeleteImageManifest(w http.ResponseWriter, r *http.Request) {
 	ctxu.GetLogger(imh).Debug("DeleteImageManifest")
@@ -348,39 +358,51 @@ func (imh *imageManifestHandler) DeleteImageManifest(w http.ResponseWriter, r *h
 		imh.Errors = append(imh.Errors, err)
 		return
 	}
-
-	err = manifests.Delete(imh, imh.Digest)
-	if err != nil {
-		switch err {
-		case digest.ErrDigestUnsupported:
-		case digest.ErrDigestInvalidFormat:
-			imh.Errors = append(imh.Errors, v2.ErrorCodeDigestInvalid)
-			return
-		case distribution.ErrBlobUnknown:
-			imh.Errors = append(imh.Errors, v2.ErrorCodeManifestUnknown)
-			return
-		case distribution.ErrUnsupported:
-			imh.Errors = append(imh.Errors, errcode.ErrorCodeUnsupported)
-			return
-		default:
-			imh.Errors = append(imh.Errors, errcode.ErrorCodeUnknown)
-			return
-		}
-	}
-
 	tagService := imh.Repository.Tags(imh)
-	referencedTags, err := tagService.Lookup(imh, distribution.Descriptor{Digest: imh.Digest})
+	err = metadata.Update(imh, imh.Repository, func(ctx ctxu.Context) error {
+		err := manifests.Delete(ctx, imh.Digest)
+		if err != nil {
+			imh.handleDeleteError(err)
+			return err
+		}
+
+		tags, err := tagService.Lookup(ctx, distribution.Descriptor{Digest: imh.Digest})
+		if err != nil {
+			imh.Errors = append(imh.Errors, err)
+			return err
+		}
+
+		for _, tag := range tags {
+			if err := tagService.Untag(ctx, tag); err != nil {
+				imh.Errors = append(imh.Errors, err)
+				return err
+			}
+		}
+		return nil
+	})
+
 	if err != nil {
-		imh.Errors = append(imh.Errors, err)
+		// errors already populated
 		return
 	}
 
-	for _, tag := range referencedTags {
-		if err := tagService.Untag(imh, tag); err != nil {
-			imh.Errors = append(imh.Errors, err)
-			return
-		}
-	}
-
 	w.WriteHeader(http.StatusAccepted)
+}
+
+func (imh *imageManifestHandler) handleDeleteError(err error) {
+	switch err {
+	case digest.ErrDigestUnsupported:
+	case digest.ErrDigestInvalidFormat:
+		imh.Errors = append(imh.Errors, v2.ErrorCodeDigestInvalid)
+		return
+	case distribution.ErrBlobUnknown:
+		imh.Errors = append(imh.Errors, v2.ErrorCodeManifestUnknown)
+		return
+	case distribution.ErrUnsupported:
+		imh.Errors = append(imh.Errors, errcode.ErrorCodeUnsupported)
+		return
+	default:
+		imh.Errors = append(imh.Errors, errcode.ErrorCodeUnknown)
+		return
+	}
 }

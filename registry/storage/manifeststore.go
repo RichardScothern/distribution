@@ -39,7 +39,7 @@ func (o skipLayerOption) Apply(m distribution.ManifestService) error {
 }
 
 type manifestStore struct {
-	repository *repository
+	repository distribution.Repository
 	blobStore  *linkedBlobStore
 	ctx        context.Context
 
