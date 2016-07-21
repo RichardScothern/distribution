@@ -35,6 +35,9 @@ type blobWriter struct {
 
 	resumableDigestEnabled bool
 	committed              bool
+
+	commitFunc  func(context.Context, distribution.Descriptor) (distribution.Descriptor, error)
+	cleanupFunc func(context.Context) error
 }
 
 var _ distribution.BlobWriter = &blobWriter{}
@@ -51,6 +54,10 @@ func (bw *blobWriter) StartedAt() time.Time {
 // Commit marks the upload as completed, returning a valid descriptor. The
 // final size and digest are checked against the first descriptor provided.
 func (bw *blobWriter) Commit(ctx context.Context, desc distribution.Descriptor) (distribution.Descriptor, error) {
+	return bw.commitFunc(ctx, desc)
+}
+
+func (bw *blobWriter) commit(ctx context.Context, desc distribution.Descriptor) (distribution.Descriptor, error) {
 	context.GetLogger(ctx).Debug("(*blobWriter).Commit")
 
 	if err := bw.fileWriter.Commit(); err != nil {
@@ -73,7 +80,7 @@ func (bw *blobWriter) Commit(ctx context.Context, desc distribution.Descriptor) 
 		return distribution.Descriptor{}, err
 	}
 
-	if err := bw.removeResources(ctx); err != nil {
+	if err := bw.cleanupFunc(ctx); err != nil {
 		return distribution.Descriptor{}, err
 	}
 
@@ -98,7 +105,7 @@ func (bw *blobWriter) Cancel(ctx context.Context) error {
 		context.GetLogger(ctx).Errorf("error closing blobwriter: %s", err)
 	}
 
-	if err := bw.removeResources(ctx); err != nil {
+	if err := bw.cleanupFunc(ctx); err != nil {
 		return err
 	}
 
@@ -340,10 +347,10 @@ func (bw *blobWriter) moveBlob(ctx context.Context, desc distribution.Descriptor
 	return bw.blobStore.driver.Move(ctx, bw.path, blobPath)
 }
 
-// removeResources should clean up all resources associated with the upload
+// cleanup should clean up all resources associated with the upload
 // instance. An error will be returned if the clean up cannot proceed. If the
 // resources are already not present, no error will be returned.
-func (bw *blobWriter) removeResources(ctx context.Context) error {
+func (bw *blobWriter) cleanup(ctx context.Context) error {
 	dataPath, err := pathFor(uploadDataPathSpec{
 		name: bw.blobStore.repository.Named().Name(),
 		id:   bw.id,
@@ -370,30 +377,4 @@ func (bw *blobWriter) removeResources(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (bw *blobWriter) Reader() (io.ReadCloser, error) {
-	// todo(richardscothern): Change to exponential backoff, i=0.5, e=2, n=4
-	try := 1
-	for try <= 5 {
-		_, err := bw.driver.Stat(bw.ctx, bw.path)
-		if err == nil {
-			break
-		}
-		switch err.(type) {
-		case storagedriver.PathNotFoundError:
-			context.GetLogger(bw.ctx).Debugf("Nothing found on try %d, sleeping...", try)
-			time.Sleep(1 * time.Second)
-			try++
-		default:
-			return nil, err
-		}
-	}
-
-	readCloser, err := bw.driver.Reader(bw.ctx, bw.path, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	return readCloser, nil
 }

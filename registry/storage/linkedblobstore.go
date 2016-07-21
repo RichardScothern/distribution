@@ -23,7 +23,7 @@ type linkPathFunc func(name string, dgst digest.Digest) (string, error)
 // that grant access to the global blob store.
 type linkedBlobStore struct {
 	*blobStore
-	registry               *registry
+	registry               distribution.Namespace
 	blobServer             distribution.BlobServer
 	blobAccessController   distribution.BlobDescriptorService
 	repository             distribution.Repository
@@ -125,7 +125,7 @@ func WithMountFrom(ref reference.Canonical) distribution.BlobCreateOption {
 
 // Writer begins a blob write session, returning a handle.
 func (lbs *linkedBlobStore) Create(ctx context.Context, options ...distribution.BlobCreateOption) (distribution.BlobWriter, error) {
-	context.GetLogger(ctx).Debug("(*linkedBlobStore).Writer")
+	context.GetLogger(ctx).Debug("(*linkedBlobStore).Create")
 
 	var opts distribution.CreateOptions
 
@@ -139,6 +139,7 @@ func (lbs *linkedBlobStore) Create(ctx context.Context, options ...distribution.
 	if opts.Mount.ShouldMount {
 		desc, err := lbs.mount(ctx, opts.Mount.From, opts.Mount.From.Digest())
 		if err == nil {
+
 			// Mount successful, no need to initiate an upload session
 			return nil, distribution.ErrBlobMounted{From: opts.Mount.From, Descriptor: desc}
 		}
@@ -299,6 +300,7 @@ func (lbs *linkedBlobStore) mount(ctx context.Context, sourceRepo reference.Name
 		MediaType: "application/octet-stream",
 		Digest:    dgst,
 	}
+
 	return desc, lbs.linkBlob(ctx, desc)
 }
 
@@ -319,6 +321,12 @@ func (lbs *linkedBlobStore) newBlobUpload(ctx context.Context, uuid, path string
 		driver:     lbs.driver,
 		path:       path,
 		resumableDigestEnabled: lbs.resumableDigestEnabled,
+	}
+	bw.commitFunc = func(ctx context.Context, desc distribution.Descriptor) (distribution.Descriptor, error) {
+		return bw.commit(ctx, desc)
+	}
+	bw.cleanupFunc = func(ctx context.Context) error {
+		return bw.cleanup(ctx)
 	}
 
 	return bw, nil
