@@ -11,6 +11,7 @@ import (
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/storage/driver"
 	"github.com/docker/distribution/registry/storage/driver/inmemory"
+	"github.com/docker/distribution/registry/storage/metadata"
 	"github.com/docker/distribution/testutil"
 	"github.com/docker/libtrust"
 )
@@ -140,11 +141,11 @@ func uploadRandomSchema2Image(t *testing.T, repository distribution.Repository) 
 	}
 }
 
-func TestNoDeletionNoEffect(t *testing.T) {
+func TestGCNoDeletionNoEffect(t *testing.T) {
 	ctx := context.Background()
 	inmemoryDriver := inmemory.New()
 
-	registry := createRegistry(t, inmemory.New())
+	registry := createRegistry(t, inmemoryDriver)
 	repo := makeRepository(t, registry, "palailogos")
 	manifestService, err := repo.Manifests(ctx)
 
@@ -179,11 +180,16 @@ func TestNoDeletionNoEffect(t *testing.T) {
 	}
 }
 
-func TestGCWithMissingManifests(t *testing.T) {
+func testGCWithMissingManifests(t *testing.T) {
 	ctx := context.Background()
 	d := inmemory.New()
 
 	registry := createRegistry(t, d)
+
+	if _, ok := registry.(metadata.Metadatable); ok {
+		t.Skip("test relies on metadata being stored in the storage driver")
+	}
+
 	repo := makeRepository(t, registry, "testrepo")
 	uploadRandomSchema1Image(t, repo)
 
@@ -210,7 +216,7 @@ func TestGCWithMissingManifests(t *testing.T) {
 	}
 }
 
-func TestDeletionHasEffect(t *testing.T) {
+func TestGCDeletionHasEffect(t *testing.T) {
 	ctx := context.Background()
 	inmemoryDriver := inmemory.New()
 
@@ -272,7 +278,7 @@ func getKeys(digests map[digest.Digest]io.ReadSeeker) (ds []digest.Digest) {
 	return
 }
 
-func TestDeletionWithSharedLayer(t *testing.T) {
+func TestGCDeletionWithSharedLayer(t *testing.T) {
 	ctx := context.Background()
 	inmemoryDriver := inmemory.New()
 
@@ -341,7 +347,7 @@ func TestDeletionWithSharedLayer(t *testing.T) {
 	}
 }
 
-func TestOrphanBlobDeleted(t *testing.T) {
+func TestGCOrphanBlobDeleted(t *testing.T) {
 	inmemoryDriver := inmemory.New()
 
 	registry := createRegistry(t, inmemoryDriver)
