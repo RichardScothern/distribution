@@ -12,6 +12,7 @@ import (
 	"github.com/docker/distribution/registry/storage/cache/memory"
 	"github.com/docker/distribution/registry/storage/driver"
 	"github.com/docker/distribution/registry/storage/driver/inmemory"
+	"github.com/docker/distribution/registry/storage/metadata"
 	"github.com/docker/distribution/testutil"
 )
 
@@ -98,7 +99,6 @@ func makeRepo(t *testing.T, ctx context.Context, name string, reg distribution.N
 
 func TestCatalog(t *testing.T) {
 	env := setupFS(t)
-
 	p := make([]string, 50)
 
 	numFilled, err := env.registry.Repositories(env.ctx, p, "")
@@ -195,6 +195,10 @@ func (d *badListDriver) List(ctx context.Context, path string) ([]string, error)
 func TestCatalogWalkError(t *testing.T) {
 	env := setupBadWalkEnv(t)
 	p := make([]string, 1)
+
+	if _, ok := env.registry.(metadata.Metadatable); ok {
+		t.Skip("test relies on implementation")
+	}
 
 	_, err := env.registry.Repositories(env.ctx, p, "")
 	if err == io.EOF {
